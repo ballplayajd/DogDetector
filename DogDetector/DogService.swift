@@ -51,5 +51,4 @@ class DogService {
         let dogResponse: DogResponse = try await networkClient.request(DogEndpoint.randomDogs)
         return dogResponse.message
     }
-   
 }

@@ -71,7 +71,6 @@ struct DogScrollView: View {
                         .onAppear {
                             if urlIndex > dogViewModel.dogImages.count - 3 {
                                 Task {
-                                    print("Fetch more")
                                     await dogViewModel.getDogImages()
                                 }
                             }

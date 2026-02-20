@@ -43,7 +43,13 @@ class DogViewModel {
             isFetching = true
             do {
                 let newDogImages = try await dogService.fetchDogImages()
-                dogImages.append(contentsOf: newDogImages)
+                let existing = Set(dogImages)
+                let uniqueNew = newDogImages.reduce(into: [URL]()) { result, url in
+                    if !existing.contains(url) && !result.contains(url) {
+                        result.append(url)
+                    }
+                }
+                dogImages.append(contentsOf: uniqueNew)
             } catch {
                 self.errorMessage = errorMessage?.debugDescription
             }

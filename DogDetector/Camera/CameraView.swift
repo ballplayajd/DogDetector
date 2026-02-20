@@ -40,11 +40,11 @@ class CameraViewModel {
             Task{@MainActor in
                 do{
                     let detectionResult = try await dogDetectionService.detectBreed(for: image)
-                    let smoothedResult = detectionSmoother.filter(detectionResult)
+                    //let smoothedResult = detectionSmoother.filter(detectionResult)
                     self.currentFrame = image.lensHighlightRegions(
-                        regions: smoothedResult.map{$0.boxes},
+                        regions: detectionResult.map{$0.boxes},
                         outsideBlurRadius: 10
-                    )?.drawingNormalizedKeypoints(showKeypoints ? smoothedResult.flatMap{$0.keypoints} : nil)
+                    )?.drawingNormalizedKeypoints(showKeypoints ? detectionResult.flatMap{$0.keypoints} : nil)
                 }catch{
                     self.currentFrame = image
                 }

@@ -42,7 +42,7 @@ struct DogResponse: Codable {
 class DogService {
     let networkClient: NetworkClient
     
-    init(baseUrl: String = "https://dog.ceo/api/"){
+    init(baseUrl: String = "https://dog.ceo/api"){
         let baseUrl = URL(string: baseUrl)!
         self.networkClient = NetworkClient(baseUrl: baseUrl)
     }

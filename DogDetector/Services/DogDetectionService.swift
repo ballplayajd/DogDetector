@@ -9,7 +9,7 @@ import CoreML
 import Vision
 import ImageIO
 
-class DogDetectionService {
+actor DogDetectionService {
     enum DogDetectionError: Error {
         case requestAlreadyRunning
         case noFeatureValueObservation
@@ -19,7 +19,9 @@ class DogDetectionService {
 
     private var request: CoreMLRequest
     private let modelInputSize = CGSize(width: 640, height: 640)
+    private let maxRetryCount = 3
 
+    @MainActor
     init() {
         let modelConfig = MLModelConfiguration()
         modelConfig.computeUnits = .cpuAndNeuralEngine
@@ -47,7 +49,22 @@ class DogDetectionService {
         for image: CGImage,
         orientation: CGImagePropertyOrientation? = nil
     ) async throws -> [DetectionResult] {
+        var attempt = 0
+        while true {
+            do {
+                return try await detectBreedOnce(for: image, orientation: orientation)
+            } catch DogDetectionError.requestAlreadyRunning {
+                attempt += 1
+                if attempt > maxRetryCount { throw DogDetectionError.requestAlreadyRunning }
+                try await Task.sleep(nanoseconds: UInt64(100_000_000 * attempt))
+            }
+        }
+    }
 
+    private func detectBreedOnce(
+        for image: CGImage,
+        orientation: CGImagePropertyOrientation? = nil
+    ) async throws -> [DetectionResult] {
         guard !isProcessing else { throw DogDetectionError.requestAlreadyRunning }
         isProcessing = true
         defer { isProcessing = false }

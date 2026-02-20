@@ -64,6 +64,6 @@ This separation keeps API access, ML inference, and UI state management independ
 
 ## Error Handling
 
-- Detection path uses throwing async flow (checked throwing continuation).
+- Detection path uses throwing async flow.
 - UI surfaces service/network failures through `DogViewModel.errorMessage` and a SwiftUI alert.
 

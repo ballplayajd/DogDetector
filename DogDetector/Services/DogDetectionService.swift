@@ -13,6 +13,7 @@ actor DogDetectionService {
     enum DogDetectionError: Error {
         case requestAlreadyRunning
         case noFeatureValueObservation
+        case noDogDetected
     }
 
     private var isProcessing = false

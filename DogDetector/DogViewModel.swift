@@ -74,30 +74,10 @@ class DogViewModel {
         }
     }
     
-    func getImageFor(url: URL) async -> CGImage?{
+    func getImageFor(url: URL) async throws -> CGImage?{
         await prepareImageIfNeeded(for: url)
         if let entry = imageEntries.object(forKey: cacheKey(for: url)) {
-            if showDetection {
-                if let detectionResult = entry.detectionResult {
-                    return entry.cgImage.lensHighlightRegions(
-                        regions: detectionResult.map{$0.boxes},
-                        outsideBlurRadius: 10
-                    )?.drawingNormalizedKeypoints(showKeypoints ? entry.detectionResult?.flatMap{$0.keypoints} : nil)
-                }else{
-                    do {
-                        let detectionResult = try await dogDetectionService.detectBreed(for: entry.cgImage)
-                        entry.detectionResult = detectionResult
-                        return entry.cgImage.lensHighlightRegions(
-                            regions: detectionResult.map{$0.boxes},
-                            outsideBlurRadius: 10
-                        )?.drawingNormalizedKeypoints(showKeypoints ? entry.detectionResult?.flatMap{$0.keypoints} : nil)
-                    } catch {
-                        return entry.cgImage
-                    }
-                }
-            }else{
-                return entry.cgImage
-            }
+            return entry.cgImage
         }
         return nil
     }

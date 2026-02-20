@@ -17,6 +17,10 @@ import CoreImage.CIFilterBuiltins
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
+private enum SharedCIContext {
+    static let instance = CIContext()
+}
+
 extension CGImage {
     private static let ciContext = CIContext()
 
@@ -141,9 +145,7 @@ extension CGImage {
 extension CIImage {
     
     var cgImage: CGImage? {
-        let ciContext = CIContext()
-        
-        guard let cgImage = ciContext.createCGImage(self, from: self.extent) else {
+        guard let cgImage = SharedCIContext.instance.createCGImage(self, from: self.extent) else {
             return nil
         }
         
@@ -156,8 +158,7 @@ extension CIImage {
                     y: 0
             ))
                 
-        let context = CIContext()
-        return context.createCGImage(transformed, from: transformed.extent)
+        return SharedCIContext.instance.createCGImage(transformed, from: transformed.extent)
     }
 }
 

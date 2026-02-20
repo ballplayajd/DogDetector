@@ -14,9 +14,14 @@ struct DetectionResult {
     let keypoints: [(point: CGPoint, conf: Float)]
 }
 
-struct DogImageEntry {
+final class DogImageEntry: NSObject {
     let cgImage: CGImage
     var detectionResult: [DetectionResult]?
+
+    init(cgImage: CGImage, detectionResult: [DetectionResult]?) {
+        self.cgImage = cgImage
+        self.detectionResult = detectionResult
+    }
 }
 
 @Observable
@@ -26,11 +31,16 @@ class DogViewModel {
     let dogDetectionService = DogDetectionService()
     var showDetection: Bool = true
     var showKeypoints: Bool = true
-    
+    var errorMessage: String?
     
     var dogImages: [URL] = []
-    private var imageEntries: [String: DogImageEntry] = [:]
+    private let imageEntries = NSCache<NSString, DogImageEntry>()
     var isFetching = false
+
+    init() {
+        imageEntries.countLimit = 120
+        imageEntries.totalCostLimit = 256 * 1024 * 1024
+    }
     
     func getDogImages() async {
         if !isFetching {
@@ -40,42 +50,24 @@ class DogViewModel {
                 let newDogImages = try await dogService.fetchDogImages()
                 dogImages.append(contentsOf: newDogImages)
             } catch {
-               // self.dogImages = []
+                self.errorMessage = errorMessage?.debugDescription
             }
         }
     }
     
-    func detectBreed(for image: CGImage, cacheKey _: String?) async -> [DetectionResult] {
-        var detectionResults: [DetectionResult] = []
-        let poses = await dogDetectionService.runDetection(cgImage: image)
-        for pose in poses{
-            let width = CGFloat(image.width)
-            let height = CGFloat(image.height)
-            let normalizedBox = CGRect(
-                x: (pose.boxInOriginalPixels.minX / width),
-                y: (pose.boxInOriginalPixels.minY / height),
-                width: (pose.boxInOriginalPixels.width / width),
-                height: (pose.boxInOriginalPixels.height / height)
-            )
-            detectionResults.append(DetectionResult(
-                boxes: normalizedBox,
-                keypoints: pose.keypointsNormalized
-            ))
-        }
-        return detectionResults
-    }
-
+    
     func prepareImageIfNeeded(for url: URL) async {
-        let key = url.absoluteString
-        if imageEntries[key] != nil { return }
+        let key = cacheKey(for: url)
+        if imageEntries.object(forKey: key) != nil { return }
 
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             guard let cgImage = cgImage(from: data) else { return }
-            imageEntries[key] = DogImageEntry(
+            let entry = DogImageEntry(
                 cgImage: cgImage,
                 detectionResult: nil
             )
+            imageEntries.setObject(entry, forKey: key, cost: imageCost(cgImage))
         } catch {
             return
         }
@@ -83,7 +75,7 @@ class DogViewModel {
     
     func getImageFor(url: URL) async -> CGImage?{
         await prepareImageIfNeeded(for: url)
-        if var entry = imageEntries[url.absoluteString] {
+        if let entry = imageEntries.object(forKey: cacheKey(for: url)) {
             if showDetection {
                 if let detectionResult = entry.detectionResult {
                     return entry.cgImage.lensHighlightRegions(
@@ -91,13 +83,16 @@ class DogViewModel {
                         outsideBlurRadius: 10
                     )?.drawingNormalizedKeypoints(showKeypoints ? entry.detectionResult?.flatMap{$0.keypoints} : nil)
                 }else{
-                    let detectionResult = await detectBreed(for: entry.cgImage, cacheKey: url.absoluteString)
-                    entry.detectionResult = detectionResult
-                    imageEntries[url.absoluteString] = entry
-                    return entry.cgImage.lensHighlightRegions(
-                        regions: detectionResult.map{$0.boxes},
-                        outsideBlurRadius: 10
-                    )?.drawingNormalizedKeypoints(showKeypoints ? entry.detectionResult?.flatMap{$0.keypoints} : nil)
+                    do {
+                        let detectionResult = try await dogDetectionService.detectBreed(for: entry.cgImage)
+                        entry.detectionResult = detectionResult
+                        return entry.cgImage.lensHighlightRegions(
+                            regions: detectionResult.map{$0.boxes},
+                            outsideBlurRadius: 10
+                        )?.drawingNormalizedKeypoints(showKeypoints ? entry.detectionResult?.flatMap{$0.keypoints} : nil)
+                    } catch {
+                        return entry.cgImage
+                    }
                 }
             }else{
                 return entry.cgImage
@@ -110,6 +105,14 @@ class DogViewModel {
         let cfData = data as CFData
         guard let source = CGImageSourceCreateWithData(cfData, nil) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+
+    private func cacheKey(for url: URL) -> NSString {
+        url.absoluteString as NSString
+    }
+
+    private func imageCost(_ image: CGImage) -> Int {
+        image.bytesPerRow * image.height
     }
 }
 

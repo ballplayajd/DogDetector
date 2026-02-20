@@ -11,7 +11,6 @@ struct ImageDetectionView: View {
     let url: URL
     var dogViewModel: DogViewModel
     
-    
     @State var cgImage: CGImage?
     
     var body: some View {

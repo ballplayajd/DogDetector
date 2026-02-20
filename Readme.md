@@ -16,7 +16,7 @@ Demo Video here: https://www.youtube.com/shorts/zKRpOKIQS7Q
 ## Core Tech Stack
 
 - SwiftUI for UI
-- Apple Vision (`VNCoreMLRequest`) for model inference
+- Apple Vision (`CoreMLRequest`) for model inference
 - CoreML for running the YOLO pose model
 - CoreImage/CoreGraphics (`CGImage`) for rendering overlays and effects
 

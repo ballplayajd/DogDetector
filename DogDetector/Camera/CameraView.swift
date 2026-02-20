@@ -13,7 +13,6 @@ class CameraViewModel {
     
     private let cameraManager = CameraManager()
     let dogDetectionService: DogDetectionService
-    private let detectionSmoother = DetectionOneEuroSmoother()
     
     var showKeypoints = true
     
@@ -40,7 +39,6 @@ class CameraViewModel {
             Task{@MainActor in
                 do{
                     let detectionResult = try await dogDetectionService.detectBreed(for: image)
-                    //let smoothedResult = detectionSmoother.filter(detectionResult)
                     self.currentFrame = image.lensHighlightRegions(
                         regions: detectionResult.map{$0.boxes},
                         outsideBlurRadius: 10

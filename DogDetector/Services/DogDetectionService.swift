@@ -104,7 +104,7 @@ final class DogDetectionService {
                 observation: obs,
                 originalSize: pendingOriginalSize,
                 modelInputSize: modelInputSize,
-                scoreThreshold: 0.5
+                scoreThreshold: 0.3
             )
             poses.append(contentsOf: decodedPoses)
         }

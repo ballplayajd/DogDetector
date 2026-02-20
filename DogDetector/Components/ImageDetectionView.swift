@@ -30,17 +30,6 @@ struct ImageDetectionView: View {
             Rectangle()
         }
     }
-    
-    @ViewBuilder
-    var boxOverlay: some View {
-        GeometryReader { geometry in
-            RoundedRectangle(cornerRadius: 24)
-                .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 24))
-                .frame(width: 320, height: 300)
-                .position(x: geometry.size.width/2, y: geometry.size.height/2)
-        }
-    }
-    
 
 }
 

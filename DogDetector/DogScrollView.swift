@@ -53,7 +53,7 @@ struct DogScrollView: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
+                .fill(.ultraThinMaterial)
         )
         .frame(width: 240)
         .padding(16)

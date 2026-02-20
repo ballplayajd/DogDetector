@@ -7,137 +7,112 @@
 
 import CoreML
 import Vision
+import ImageIO
 
-final class DogDetectionService {
+class DogDetectionService {
     enum DogDetectionError: Error {
         case requestAlreadyRunning
         case noFeatureValueObservation
     }
 
-    private var request: VNRequest!
-    private var inFlightContinuation: CheckedContinuation<[DogPose], Error>?
-    private var pendingOriginalSize: CGSize = .zero
+    private var isProcessing = false
+
+    private var request: CoreMLRequest
     private let modelInputSize = CGSize(width: 640, height: 640)
-    
-    var isProcessing: Bool = false
-    
+
     init() {
-        setupCoreML()
-    }
-    
-    private func setupCoreML() {
         let modelConfig = MLModelConfiguration()
         modelConfig.computeUnits = .cpuAndNeuralEngine
-        guard let model = try? VNCoreMLModel(for: dog_pose_model(configuration: modelConfig).model) else {
-            fatalError("Failed to load CoreML model")
+
+        let mlModel: MLModel
+        do {
+            mlModel = try dog_pose_model(configuration: modelConfig).model
+        } catch {
+            fatalError("Failed to load CoreML model: \(error)")
         }
-        
-        let request = VNCoreMLRequest(model: model) { [weak self] request, error in
-            self?.processPredictions(for: request, error: error)
+
+        let container: CoreMLModelContainer
+        do {
+            container = try CoreMLModelContainer(model: mlModel, featureProvider: nil)
+        } catch {
+            fatalError("Failed to create CoreMLModelContainer: \(error)")
         }
-        request.imageCropAndScaleOption = .scaleFit
-        self.request = request
+
+        var req = CoreMLRequest(model: container)
+        req.cropAndScaleAction = .scaleToFit
+        self.request = req
     }
-    
-    public func detectBreed(for image: CGImage) async throws-> [DetectionResult] {
-        var detectionResults: [DetectionResult] = []
-        let poses = try await runDetection(cgImage: image)
-        for pose in poses{
-            let width = CGFloat(image.width)
-            let height = CGFloat(image.height)
-            let normalizedBox = CGRect(
-                x: (pose.boxInOriginalPixels.minX / width),
-                y: (pose.boxInOriginalPixels.minY / height),
-                width: (pose.boxInOriginalPixels.width / width),
-                height: (pose.boxInOriginalPixels.height / height)
-            )
-            detectionResults.append(DetectionResult(
-                boxes: normalizedBox,
-                keypoints: pose.keypointsNormalized
-            ))
-        }
-        return detectionResults
-    }
-    
-    private func runDetection(cgImage: CGImage) async throws -> [DogPose] {
-        if isProcessing { throw DogDetectionError.requestAlreadyRunning }
+
+    func detectBreed(
+        for image: CGImage,
+        orientation: CGImagePropertyOrientation? = nil
+    ) async throws -> [DetectionResult] {
+
+        guard !isProcessing else { throw DogDetectionError.requestAlreadyRunning }
         isProcessing = true
-        pendingOriginalSize = CGSize(width: cgImage.width, height: cgImage.height)
-
-        return try await withCheckedThrowingContinuation { continuation in
-            inFlightContinuation = continuation
-            do {
-                try performRequest(cgImage: cgImage)
-            } catch {
-                isProcessing = false
-                inFlightContinuation?.resume(throwing: error)
-                inFlightContinuation = nil
-            }
-        }
-    }
-
-    private func performRequest(cgImage: CGImage) throws {
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try handler.perform([request])
-    }
-    
-    private func processPredictions(for request: VNRequest, error: Error?){
         defer { isProcessing = false }
 
-        if let error {
-            print("VN error: \(error)")
-            inFlightContinuation?.resume(throwing: error)
-            inFlightContinuation = nil
-            return
+        let originalSize = CGSize(width: image.width, height: image.height)
+
+        // CoreMLRequest returns observations from the model run
+        let observations: [CoreMLFeatureValueObservation]
+        do {
+            observations = try await request.perform(on: image, orientation: orientation) as! [CoreMLFeatureValueObservation]
+        } catch {
+            throw error
         }
-        
-        guard
-            let observations = request.results as? [VNCoreMLFeatureValueObservation]
-        else {
-            inFlightContinuation?.resume(throwing: DogDetectionError.noFeatureValueObservation)
-            inFlightContinuation = nil
-            return
-        }
+
         var poses: [DogPose] = []
+        poses.reserveCapacity(16)
+
         for obs in observations {
-            let decodedPoses = decodeDogPoses(
-                observation: obs,
-                originalSize: pendingOriginalSize,
-                modelInputSize: modelInputSize,
-                scoreThreshold: 0.3
+            poses.append(
+                contentsOf: decodeDogPoses(
+                    observation: obs,
+                    originalSize: originalSize,
+                    modelInputSize: modelInputSize,
+                    scoreThreshold: 0.3
+                )
             )
-            poses.append(contentsOf: decodedPoses)
         }
-        inFlightContinuation?.resume(returning: poses)
-        inFlightContinuation = nil
+
+        let width = CGFloat(image.width)
+        let height = CGFloat(image.height)
+
+        return poses.map { pose in
+            let normalizedBox = CGRect(
+                x: pose.boxInOriginalPixels.minX / width,
+                y: pose.boxInOriginalPixels.minY / height,
+                width: pose.boxInOriginalPixels.width / width,
+                height: pose.boxInOriginalPixels.height / height
+            )
+            return DetectionResult(
+                boxes: normalizedBox,
+                keypoints: pose.keypointsNormalized
+            )
+        }
     }
 
+
     private func decodeDogPoses(
-        observation: VNCoreMLFeatureValueObservation,
+        observation: CoreMLFeatureValueObservation,
         originalSize: CGSize,
         modelInputSize: CGSize,
         scoreThreshold: Float
     ) -> [DogPose] {
-        guard let arr = observation.featureValue.multiArrayValue,
-              arr.dataType == .float32,
-              arr.shape.count == 3
+        guard let shaped = observation.featureValue.shapedArrayValue(of: Float32.self),
+              shaped.shape.count == 3
         else {
             return []
         }
 
-        let batch = arr.shape[0].intValue
-        let dim1 = arr.shape[1].intValue
-        let dim2 = arr.shape[2].intValue
-
+        let batch = shaped.shape[0]
+        let dim1 = shaped.shape[1]
+        let dim2 = shaped.shape[2]
 
         guard batch == 1, dim1 == 300, dim2 == 78 else {
             return []
         }
-
-        let ptr = arr.dataPointer.bindMemory(to: Float32.self, capacity: arr.count)
-        let strideB = arr.strides[0].intValue
-        let strideC = arr.strides[1].intValue
-        let strideN = arr.strides[2].intValue
 
         let inW = modelInputSize.width
         let inH = modelInputSize.height
@@ -161,53 +136,53 @@ final class DogDetectionService {
         var poses: [DogPose] = []
         poses.reserveCapacity(16)
 
-        // Current model layout: [1, detections, features] == [1,300,78].
-        func atDetection(_ d: Int, _ f: Int) -> Float32 {
-            let index = 0 * strideB + d * strideC + f * strideN
-            return ptr[index]
-        }
-
-        for d in 0..<dim1 {
-            let score = Float(atDetection(d, 4))
-            guard score >= scoreThreshold else { continue }
-
-            let x1 = CGFloat(atDetection(d, 0))
-            let y1 = CGFloat(atDetection(d, 1))
-            let x2 = CGFloat(atDetection(d, 2))
-            let y2 = CGFloat(atDetection(d, 3))
-            let boxInModel = CGRect(
-                x: x1,
-                y: y1,
-                width: max(0, x2 - x1),
-                height: max(0, y2 - y1)
-            )
-            let boxInOriginal = unletterboxRect(boxInModel)
-
-            var keypointsInOriginal: [(point: CGPoint, conf: Float)] = []
-            keypointsInOriginal.reserveCapacity(24)
-            for k in 0..<24 {
-                let base = 6 + 3 * k
-                let x = CGFloat(atDetection(d, base))
-                let y = CGFloat(atDetection(d, base + 1))
-                let conf = Float(atDetection(d, base + 2))
-                keypointsInOriginal.append((point: unletterboxPoint(CGPoint(x: x, y: y)), conf: conf))
+        shaped.withUnsafeShapedBufferPointer { ptr, _, strides in
+            func atDetection(_ d: Int, _ f: Int) -> Float32 {
+                let index = d * strides[1] + f * strides[2]
+                return ptr[index]
             }
 
-            let keypointsNormalized = keypointsInOriginal.map { kp in
-                (
-                    point: CGPoint(x: kp.point.x / origW, y: kp.point.y / origH),
-                    conf: kp.conf
+            for d in 0..<dim1 {
+                let score = Float(atDetection(d, 4))
+                guard score >= scoreThreshold else { continue }
+
+                let x1 = CGFloat(atDetection(d, 0))
+                let y1 = CGFloat(atDetection(d, 1))
+                let x2 = CGFloat(atDetection(d, 2))
+                let y2 = CGFloat(atDetection(d, 3))
+
+                let boxInModel = CGRect(
+                    x: x1,
+                    y: y1,
+                    width: max(0, x2 - x1),
+                    height: max(0, y2 - y1)
+                )
+                let boxInOriginal = unletterboxRect(boxInModel)
+
+                var keypointsInOriginal: [(point: CGPoint, conf: Float)] = []
+                keypointsInOriginal.reserveCapacity(24)
+
+                for k in 0..<24 {
+                    let base = 6 + 3 * k
+                    let x = CGFloat(atDetection(d, base))
+                    let y = CGFloat(atDetection(d, base + 1))
+                    let conf = Float(atDetection(d, base + 2))
+                    keypointsInOriginal.append((point: unletterboxPoint(CGPoint(x: x, y: y)), conf: conf))
+                }
+
+                let keypointsNormalized = keypointsInOriginal.map { kp in
+                    (point: CGPoint(x: kp.point.x / origW, y: kp.point.y / origH), conf: kp.conf)
+                }
+
+                poses.append(
+                    DogPose(
+                        score: score,
+                        boxInOriginalPixels: boxInOriginal,
+                        keypointsInOriginalPixels: keypointsInOriginal,
+                        keypointsNormalized: keypointsNormalized
+                    )
                 )
             }
-
-            poses.append(
-                DogPose(
-                    score: score,
-                    boxInOriginalPixels: boxInOriginal,
-                    keypointsInOriginalPixels: keypointsInOriginal,
-                    keypointsNormalized: keypointsNormalized
-                )
-            )
         }
 
         return poses

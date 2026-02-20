@@ -8,80 +8,64 @@
 
 import SwiftUI
 
-@Observable
-class DogViewModel {
-    let dogService = DogService()
-    
-    var dogImages: [URL] = []
-    var isFetching = false
-    
-    func getDogImages() async {
-        if !isFetching {
-            defer { isFetching = false }
-            isFetching = true
-            do {
-                let newDogImages = try await dogService.fetchDogImages()
-                dogImages.append(contentsOf: newDogImages)
-            } catch {
-                self.dogImages = []
-            }
-        }
-    }
-}
-
-struct DogImage: View {
-    @State var loadedImage: UIImage? = nil
-   
-    let url: URL
-    var dogViewModel: DogViewModel
+struct DogScrollView: View {
+    @State var dogViewModel: DogViewModel = DogViewModel()
     
     var body: some View {
-        image
-            .aspectRatio(contentMode: .fill)
-            .task {
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: url)
-                    if let uiImage = UIImage(data: data) {
-                        self.loadedImage = uiImage
+        NavigationStack{
+            dogScrollView
+                .navigationTitle("Dog Detector")
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action: {
+                            
+                        }) {
+                            Image(systemName: "camera")
+                        }
                     }
-                } catch {
-                    // Optionally log the error or handle it
                 }
-            }
+                .overlay(alignment: .bottomTrailing, content: {detectionToggle})
+                .task{
+                    await dogViewModel.getDogImages()
+                }
+        }
     }
     
     @ViewBuilder
-    var image: some View {
-        if let loadedImage = loadedImage {
-            Image(uiImage: loadedImage)
-                .resizable()
-        }else{
-            Rectangle()
+    var detectionToggle: some View {
+        HStack{
+            Toggle(isOn: $dogViewModel.showDetection, label: {
+                Text("Show Detection")
+                    .foregroundColor(.white)
+            })
+           
         }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
+        )
+        .frame(width: 240)
+        .padding(16)
     }
-}
 
-struct DogScrollView: View {
-    @State var dogViewModel: DogViewModel = DogViewModel()
-    var body: some View {
+    
+    
+    var dogScrollView: some View {
         ScrollView{
             LazyVStack{
-                ForEach(0..<dogViewModel.dogImages.count, id: \.self){urlIndex in
-                    DogImage(url: dogViewModel.dogImages[urlIndex], dogViewModel: dogViewModel)
-                        .onAppear {
+                ForEach(Array(dogViewModel.dogImages.enumerated()), id: \.element) { urlIndex, url in
+                    ImageDetectionView(url: url, dogViewModel: dogViewModel)
+                        .task {
                             if urlIndex > dogViewModel.dogImages.count - 3 {
-                                Task {
-                                    await dogViewModel.getDogImages()
-                                }
+                                await dogViewModel.getDogImages()
                             }
                         }
                 }
             }
         }
-        .task{
-            await dogViewModel.getDogImages()
-        }
     }
+    
 }
 
 #Preview {

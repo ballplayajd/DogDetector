@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C73280222F4812170020AFA8 /* Readme.md in Sources */ = {isa = PBXBuildFile; fileRef = C73280212F4812070020AFA8 /* Readme.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -28,7 +27,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		C73280212F4812070020AFA8 /* Readme.md */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Readme.md; sourceTree = "<group>"; };
+		C73280212F4812070020AFA8 /* Readme.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = Readme.md; sourceTree = "<group>"; };
 		C78FB91D2F47869A007BF274 /* DogDetector.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DogDetector.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C78FB92A2F47869C007BF274 /* DogDetectorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DogDetectorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C78FB9342F47869C007BF274 /* DogDetectorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DogDetectorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -242,7 +241,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C73280222F4812170020AFA8 /* Readme.md in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

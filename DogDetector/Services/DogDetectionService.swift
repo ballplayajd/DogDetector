@@ -18,7 +18,6 @@ final class DogDetectionService {
     private var inFlightContinuation: CheckedContinuation<[DogPose], Error>?
     private var pendingOriginalSize: CGSize = .zero
     private let modelInputSize = CGSize(width: 640, height: 640)
-    private let debugDecoding = true
     
     var isProcessing: Bool = false
     

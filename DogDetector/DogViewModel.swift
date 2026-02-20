@@ -9,11 +9,6 @@ import SwiftUI
 import ImageIO
 
 
-struct DetectionResult {
-    let boxes: CGRect
-    let keypoints: [(point: CGPoint, conf: Float)]
-}
-
 final class DogImageEntry: NSObject {
     let cgImage: CGImage
     var detectionResult: [DetectionResult]?
@@ -116,9 +111,3 @@ class DogViewModel {
     }
 }
 
-struct DogPose {
-    let score: Float
-    let boxInOriginalPixels: CGRect
-    let keypointsInOriginalPixels: [(point: CGPoint, conf: Float)]
-    let keypointsNormalized: [(point: CGPoint, conf: Float)]
-}

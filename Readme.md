@@ -1,6 +1,7 @@
 # DogDetector
 
 DogDetector is an iOS SwiftUI app that fetches dog images, runs pose detection, and renders highlighted detections with keypoints.
+Demo Video here: https://www.youtube.com/shorts/zKRpOKIQS7Q
 
 ## Platform Support
 

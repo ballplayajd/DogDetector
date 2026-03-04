@@ -7,11 +7,11 @@
 import Foundation
 
 enum DogEndpoint: Endpoint {
-    case randomDogs
+    case randomDogs(count: Int = 10)
     
     var path: String {
         switch self {
-        case .randomDogs: return "/breeds/image/random/10"
+        case .randomDogs(let count): return "/breeds/image/random/\(count)"
         }
     }
     
@@ -47,8 +47,8 @@ class DogService {
         self.networkClient = NetworkClient(baseUrl: baseUrl)
     }
     
-    func fetchDogImages() async throws -> [URL] {
-        let dogResponse: DogResponse = try await networkClient.request(DogEndpoint.randomDogs)
+    func fetchDogImages(count: Int = 10) async throws -> [URL] {
+        let dogResponse: DogResponse = try await networkClient.request(DogEndpoint.randomDogs(count: count))
         return dogResponse.message
     }
 }

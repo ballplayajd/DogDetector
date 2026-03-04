@@ -106,9 +106,9 @@ class DogDetectionService {
         for image: CGImage,
         orientation: CGImagePropertyOrientation? = nil
     ) async throws -> [DetectionResult] {
-        guard !isProcessing else { throw DogDetectionError.requestAlreadyRunning }
-        isProcessing = true
-        defer { isProcessing = false }
+       // guard !isProcessing else { throw DogDetectionError.requestAlreadyRunning }
+        //isProcessing = true
+       // defer { isProcessing = false }
 
         let originalSize = CGSize(width: image.width, height: image.height)
 

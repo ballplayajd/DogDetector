@@ -7,6 +7,7 @@ struct SimilarDogsView: View {
     @State private var baseImage: CGImage?
     @State private var results: [(image: CGImage, score: Float)] = []
     @State private var isLoading = true
+    @State private var progress: (done: Int, total: Int) = (0, 0)
 
     var body: some View {
         ScrollView {
@@ -20,7 +21,9 @@ struct SimilarDogsView: View {
         .navigationTitle("Similar Dogs")
         .task {
             baseImage = try? await dogViewModel.getImageFor(url: baseURL)
-            results = await dogViewModel.fetchAndRankSimilarDogs(for: baseURL)
+            results = await dogViewModel.fetchAndRankSimilarDogs(for: baseURL, candidateCount: 50) { done, total in
+                progress = (done, total)
+            }
             isLoading = false
         }
     }
@@ -44,14 +47,21 @@ struct SimilarDogsView: View {
 
     @ViewBuilder
     private var similarDogsSection: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Similar Dogs")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if isLoading {
-                ProgressView("Finding similar dogs...")
-                    .padding(.top, 40)
+                VStack(spacing: 12) {
+                    ProgressView(value: progress.total > 0 ? Double(progress.done) : 0, total: max(Double(progress.total), 1))
+                    Text(progress.total > 0
+                         ? "Processing \(progress.done)/\(progress.total) dogs..."
+                         : "Fetching dogs...")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.top, 40)
             } else if results.isEmpty {
                 Text("No similar dogs found")
                     .foregroundColor(.secondary)
@@ -65,8 +75,8 @@ struct SimilarDogsView: View {
                                 .scaledToFit()
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
                             Text(String(format: "Similarity: %.2f", result.score))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 16, weight: .semibold, design: .default))
+                                .foregroundColor(.blue)
                         }
                     }
                 }

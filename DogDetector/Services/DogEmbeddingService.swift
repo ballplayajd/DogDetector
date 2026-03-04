@@ -67,9 +67,9 @@ class DogEmbeddingService {
         orientation: CGImagePropertyOrientation? = nil,
         outputFeatureName: String
     ) async throws -> [Float] {
-        guard !isProcessing else { throw DogEmbeddingError.requestAlreadyRunning }
-        isProcessing = true
-        defer { isProcessing = false }
+        //guard !isProcessing else { throw DogEmbeddingError.requestAlreadyRunning }
+        //isProcessing = true
+       // defer { isProcessing = false }
 
         let observations = try await request.perform(image: image, orientation: orientation)
         guard let observation = observations.first else {
@@ -83,13 +83,7 @@ class DogEmbeddingService {
     }
 
     private func decodeVector(from value: MLSendableFeatureValue) throws -> [Float] {
-        if let shaped = value.shapedArrayValue(of: Float32.self) {
-            return shaped.scalars
-        }
         if let shaped = value.shapedArrayValue(of: Float16.self) {
-            return shaped.scalars.map(Float.init)
-        }
-        if let shaped = value.shapedArrayValue(of: Double.self) {
             return shaped.scalars.map(Float.init)
         }
         throw DogEmbeddingError.unsupportedOutputFeature

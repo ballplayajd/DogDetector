@@ -7,6 +7,7 @@
 
 import SwiftUI
 import ImageIO
+import Accelerate
 
 
 final class DogImageEntry: NSObject {
@@ -22,7 +23,6 @@ final class DogImageEntry: NSObject {
 }
 
 @Observable
-@MainActor
 class DogViewModel {
     let dogService = DogService()
     let dogDetectionService = DogDetectionService()
@@ -98,7 +98,8 @@ class DogViewModel {
         guard embeddingsByURL[url] == nil else { return }
         do {
             guard let croppedDog = await getPrimaryDogCrop(for: url) else { return }
-            let embedding = try await dogEmbeddingService.predict(for: croppedDog)
+            let raw = try await dogEmbeddingService.predict(for: croppedDog)
+            let embedding = l2Normalize(raw)
             let key = cacheKey(for: url)
             imageEntries.object(forKey: key)?.embedding = embedding
             embeddingsByURL[url] = embedding
@@ -108,8 +109,12 @@ class DogViewModel {
         }
     }
 
-    func fetchAndRankSimilarDogs(for targetURL: URL) async -> [(image: CGImage, score: Float)] {
-        print("[SimilarDogs] fetchAndRank start target=\(targetURL.lastPathComponent)")
+    func fetchAndRankSimilarDogs(
+        for targetURL: URL,
+        candidateCount: Int = 50,
+        onProgress: ((Int, Int) -> Void)? = nil
+    ) async -> [(image: CGImage, score: Float)] {
+        print("[SimilarDogs] fetchAndRank start target=\(targetURL.lastPathComponent) candidates=\(candidateCount)")
         await runEmbedding(for: targetURL)
         guard let targetEmbedding = embeddingsByURL[targetURL] else {
             print("[SimilarDogs] Missing target embedding for \(targetURL.lastPathComponent)")
@@ -118,27 +123,32 @@ class DogViewModel {
 
         let newURLs: [URL]
         do {
-            newURLs = try await dogService.fetchDogImages()
+            newURLs = try await dogService.fetchDogImages(count: candidateCount)
             print("[SimilarDogs] Fetched \(newURLs.count) candidate URLs")
         } catch {
             print("[SimilarDogs] Failed to fetch candidate URLs: \(error)")
             return []
         }
 
-        for url in newURLs {
+        for (i, url) in newURLs.enumerated() {
             await prepareImageIfNeeded(for: url)
             await runEmbedding(for: url)
+            onProgress?(i + 1, newURLs.count)
         }
 
-        var results: [(image: CGImage, score: Float)] = []
-        for url in newURLs {
-            guard let embedding = embeddingsByURL[url],
-                  let similarity = cosineSimilarity(targetEmbedding, embedding),
-                  let image = imageEntries.object(forKey: cacheKey(for: url))?.cgImage
-            else { continue }
-            results.append((image: image, score: similarity))
+        let candidates = newURLs.compactMap { url -> (url: URL, embedding: [Float])? in
+            guard let embedding = embeddingsByURL[url] else { return nil }
+            return (url: url, embedding: embedding)
         }
-        results.sort { $0.score > $1.score }
+        let ranked = rankBySimilarity(target: targetEmbedding, candidates: candidates)
+
+        var results: [(image: CGImage, score: Float)] = []
+        results.reserveCapacity(ranked.count)
+        for entry in ranked {
+            if let image = imageEntries.object(forKey: cacheKey(for: entry.url))?.cgImage {
+                results.append((image: image, score: entry.score))
+            }
+        }
         print("[SimilarDogs] Returning \(results.count) ranked results")
         return results
     }
@@ -184,19 +194,53 @@ class DogViewModel {
         image.bytesPerRow * image.height
     }
 
-    private func cosineSimilarity(_ lhs: [Float], _ rhs: [Float]) -> Float? {
+    private func l2Normalize(_ v: [Float]) -> [Float] {
+        var norm: Float = 0
+        vDSP_svesq(v, 1, &norm, vDSP_Length(v.count))
+        norm = sqrt(norm)
+        guard norm > 0 else { return v }
+        var result = [Float](repeating: 0, count: v.count)
+        var divisor = norm
+        vDSP_vsdiv(v, 1, &divisor, &result, 1, vDSP_Length(v.count))
+        return result
+    }
+
+    private func dotProduct(_ lhs: [Float], _ rhs: [Float]) -> Float? {
         guard lhs.count == rhs.count, !lhs.isEmpty else { return nil }
         var dot: Float = 0
-        var lhsNorm: Float = 0
-        var rhsNorm: Float = 0
-        for i in 0..<lhs.count {
-            dot += lhs[i] * rhs[i]
-            lhsNorm += lhs[i] * lhs[i]
-            rhsNorm += rhs[i] * rhs[i]
+        vDSP_dotpr(lhs, 1, rhs, 1, &dot, vDSP_Length(lhs.count))
+        return dot
+    }
+
+    private func rankBySimilarity(
+        target: [Float],
+        candidates: [(url: URL, embedding: [Float])]
+    ) -> [(url: URL, score: Float)] {
+        let dim = target.count
+        let n = candidates.count
+        guard dim > 0, n > 0 else { return [] }
+
+        var matrix = [Float](repeating: 0, count: n * dim)
+        for i in 0..<n {
+            matrix.replaceSubrange(i * dim..<(i + 1) * dim, with: candidates[i].embedding)
         }
-        let denom = sqrt(lhsNorm) * sqrt(rhsNorm)
-        guard denom > 0 else { return nil }
-        return dot / denom
+
+        var scores = [Float](repeating: 0, count: n)
+        cblas_sgemv(
+            CblasRowMajor, CblasNoTrans,
+            Int32(n), Int32(dim),
+            1.0, &matrix, Int32(dim),
+            target, 1,
+            0.0, &scores, 1
+        )
+
+        var indexed = [(url: URL, score: Float)]()
+        indexed.reserveCapacity(n)
+        for i in 0..<n {
+            indexed.append((url: candidates[i].url, score: scores[i]))
+        }
+        indexed.sort { $0.score > $1.score }
+        return indexed
     }
 }
 

@@ -1,31 +1,28 @@
-//
-//  ImageDetectionView.swift
-//  ImageDetectionView
-//
-//  Created by Joe Donino on 2/19/26.
-//
-
 import SwiftUI
 
 struct ImageDetectionView: View {
     let url: URL
     var dogViewModel: DogViewModel
-    
+
     @State var cgImage: CGImage?
     @State var error: String?
+
     var body: some View {
-        image
-            .aspectRatio(contentMode: .fill)
-            .overlay(content: {errorOverlay})
-            .task(id: "\(url)\(dogViewModel.showDetection)") {
-               await updateImage()
-            }
+        NavigationLink(value: url) {
+            image
+                .aspectRatio(contentMode: .fill)
+                .overlay(content: {errorOverlay})
+        }
+        .task(id: "\(url)\(dogViewModel.showDetection)") {
+            await updateImage()
+            await dogViewModel.runEmbedding(for: url)
+        }
     }
-    
+
     @ViewBuilder
     var errorOverlay: some View {
         if let errorMessage = error {
-            VStack{
+            VStack {
                 Spacer()
                 Text(errorMessage)
                     .foregroundColor(Color.white)
@@ -35,18 +32,17 @@ struct ImageDetectionView: View {
             .background(Color.black.opacity(0.5))
         }
     }
-    
+
     @ViewBuilder
     var image: some View {
         if let cgImage = cgImage {
             Image(decorative: cgImage, scale: 1)
                 .resizable()
-        }else{
+        } else {
             Rectangle()
-                
         }
     }
-    
+
     func updateImage() async {
         do {
             self.error = nil
@@ -57,14 +53,11 @@ struct ImageDetectionView: View {
             self.cgImage = sourceImage
             if dogViewModel.showDetection {
                 let detectionResult = try await dogViewModel.dogDetectionService.detectBreed(for: sourceImage)
-                guard !detectionResult.isEmpty else {
-                    self.error = "No dog detected"
-                    return
-                }
+                guard !detectionResult.isEmpty else { return }
                 self.cgImage = sourceImage.lensHighlightRegions(
-                    regions: detectionResult.map{$0.boxes},
+                    regions: detectionResult.map { $0.boxes },
                     outsideBlurRadius: 10
-                )?.drawingNormalizedKeypoints(dogViewModel.showKeypoints ? detectionResult.flatMap{$0.keypoints} : nil)
+                )?.drawingNormalizedKeypoints(dogViewModel.showKeypoints ? detectionResult.flatMap { $0.keypoints } : nil)
             }
         } catch DogDetectionService.DogDetectionError.requestAlreadyRunning {
             self.error = nil
@@ -77,6 +70,11 @@ struct ImageDetectionView: View {
 }
 
 #Preview {
-    ImageDetectionView(url: URL(string: "https://images.dog.ceo/breeds/mountain-swiss/n02107574_1597.jpg")!, dogViewModel: DogViewModel())
+    NavigationStack {
+        ImageDetectionView(
+            url: URL(string: "https://images.dog.ceo/breeds/mountain-swiss/n02107574_1597.jpg")!,
+            dogViewModel: DogViewModel()
+        )
         .scaledToFit()
+    }
 }

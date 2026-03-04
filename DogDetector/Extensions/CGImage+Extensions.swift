@@ -24,6 +24,20 @@ private enum SharedCIContext {
 extension CGImage {
     private static let ciContext = CIContext()
 
+    func cropped(toNormalizedRect normalizedRect: CGRect) -> CGImage? {
+        let width = CGFloat(self.width)
+        let height = CGFloat(self.height)
+        let x = normalizedRect.origin.x * width
+        let y = (1 - normalizedRect.origin.y - normalizedRect.height) * height
+        let w = normalizedRect.width * width
+        let h = normalizedRect.height * height
+        let pixelRect = CGRect(x: x, y: y, width: w, height: h).integral
+        let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+        let clipped = pixelRect.intersection(bounds)
+        guard !clipped.isNull, clipped.width > 1, clipped.height > 1 else { return nil }
+        return cropping(to: clipped)
+    }
+
     func lensHighlightRegions(
         regions: [CGRect],
         outsideBlurRadius: Float = 12

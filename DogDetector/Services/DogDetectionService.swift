@@ -9,7 +9,48 @@ import CoreML
 import Vision
 import ImageIO
 
-actor DogDetectionService {
+protocol Requestable {
+    func perform(image: CGImage, orientation: CGImagePropertyOrientation?) async throws -> [CoreMLFeatureValueObservation]
+}
+
+
+
+class RequestWrapper: Requestable {
+    init(request: CoreMLRequest) {
+        self.request = request
+    }
+    private var request: CoreMLRequest
+    func perform(image: CGImage, orientation: CGImagePropertyOrientation?) async throws -> [CoreMLFeatureValueObservation]{
+        return try await request.perform(on: image, orientation: orientation) as! [CoreMLFeatureValueObservation]
+    }
+}
+
+class StubVNObservation: VNCoreMLFeatureValueObservation {
+    private let _value: MLFeatureValue
+    init(_ value: MLFeatureValue) {
+        _value = value
+        super.init()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override var featureValue: MLFeatureValue { _value }
+}
+
+class MockMLRequest: Requestable {
+    func perform(image: CGImage, orientation: CGImagePropertyOrientation?) async throws -> [CoreMLFeatureValueObservation] {
+        let array = try MLMultiArray(shape: [1, 300, 78], dataType: .float32)
+        for i in 0..<(300 * 78) { array[i] = 0 }
+        array[0] = NSNumber(value: Float(100))
+        array[1] = NSNumber(value: Float(150))
+        array[2] = NSNumber(value: Float(300))
+        array[3] = NSNumber(value: Float(400))
+        array[4] = NSNumber(value: Float(0.9))
+        let vnObs = StubVNObservation(MLFeatureValue(multiArray: array))
+        return [CoreMLFeatureValueObservation(vnObs)!]
+    }
+}
+
+
+class DogDetectionService {
     enum DogDetectionError: Error {
         case requestAlreadyRunning
         case noFeatureValueObservation
@@ -17,12 +58,11 @@ actor DogDetectionService {
     }
 
     private var isProcessing = false
-
-    private var request: CoreMLRequest
+    let request: Requestable
+    
     private let modelInputSize = CGSize(width: 640, height: 640)
     private let maxRetryCount = 3
 
-    @MainActor
     init() {
         let modelConfig = MLModelConfiguration()
         modelConfig.computeUnits = .cpuAndNeuralEngine
@@ -43,7 +83,7 @@ actor DogDetectionService {
 
         var req = CoreMLRequest(model: container)
         req.cropAndScaleAction = .scaleToFit
-        self.request = req
+        self.request = RequestWrapper(request: req)
     }
 
     func detectBreed(
@@ -75,7 +115,7 @@ actor DogDetectionService {
         // CoreMLRequest returns observations from the model run
         let observations: [CoreMLFeatureValueObservation]
         do {
-            observations = try await request.perform(on: image, orientation: orientation) as! [CoreMLFeatureValueObservation]
+            observations = try await request.perform(image: image, orientation: orientation)
         } catch {
             throw error
         }
@@ -112,7 +152,7 @@ actor DogDetectionService {
     }
 
 
-    private func decodeDogPoses(
+    func decodeDogPoses(
         observation: CoreMLFeatureValueObservation,
         originalSize: CGSize,
         modelInputSize: CGSize,

@@ -1,21 +1,16 @@
-//
-//  DogScrollView.swift
-//  DogDetector
-//
-//  Created by Joe Donino on 2/19/26.
-//
-
-
 import SwiftUI
 
 struct DogScrollView: View {
     @State var dogViewModel: DogViewModel = DogViewModel()
     @State var showCamera: Bool = false
-    
+
     var body: some View {
-        NavigationStack{
+        NavigationStack {
             dogScrollView
                 .navigationTitle("Dog Detector")
+                .navigationDestination(for: URL.self) { url in
+                    SimilarDogsView(baseURL: url, dogViewModel: dogViewModel)
+                }
                 .toolbar {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button(action: {
@@ -26,10 +21,11 @@ struct DogScrollView: View {
                     }
                 }
                 .overlay(alignment: .bottomTrailing, content: {detectionToggle})
-                .task{
+                .task {
                     await dogViewModel.getDogImages()
                 }
-        }.fullScreenCover(isPresented: $showCamera){
+        }
+        .fullScreenCover(isPresented: $showCamera) {
             CameraView(dogDetectionService: dogViewModel.dogDetectionService)
         }
         .alert("Something went wrong", isPresented: errorIsPresented) {
@@ -40,15 +36,14 @@ struct DogScrollView: View {
             Text(dogViewModel.errorMessage ?? "Unknown error")
         }
     }
-    
+
     @ViewBuilder
     var detectionToggle: some View {
-        HStack{
+        HStack {
             Toggle(isOn: $dogViewModel.showDetection, label: {
                 Text("Show Detection")
                     .foregroundColor(.white)
             })
-           
         }
         .padding(8)
         .background(
@@ -59,10 +54,8 @@ struct DogScrollView: View {
         .padding(16)
     }
 
-    
-    
     var dogScrollView: some View {
-        List{
+        List {
             ForEach(Array(dogViewModel.dogImages.enumerated()), id: \.element) { urlIndex, url in
                 ImageDetectionView(url: url, dogViewModel: dogViewModel)
                     .task {
@@ -84,7 +77,6 @@ struct DogScrollView: View {
             }
         )
     }
-    
 }
 
 #Preview {
